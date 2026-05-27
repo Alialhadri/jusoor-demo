@@ -213,7 +213,7 @@ select.fb{padding:4px 8px}
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <div class="sync"><div class="sdot"></div>Raqeem &middot; Sehhaty live sync</div>
-      <div style="font-size:12px;color:#6b7280;font-weight:500">08:15 AM</div>
+      <div style="font-size:12px;color:#6b7280;font-weight:500">08:15 AM &nbsp;<span id="live-clock" style="font-family:monospace;font-size:11px;font-weight:500"></span></div>
     </div>
   </div>
   <div class="content">
@@ -267,6 +267,7 @@ select.fb{padding:4px 8px}
       <button class="fb" data-filter="CKD">CKD</button>
       <button class="fb" data-filter="Lip">Lipids</button>
       <button class="fb" id="btn-add-pt" style="margin-left:auto;background:var(--gr);color:#fff;border-color:var(--gr);font-weight:600" onclick="openAddPatient()">&#43; Add Patient</button>
+      <input type="search" id="pt-search" placeholder="Search patients..." style="flex:1;min-width:160px;max-width:260px;padding:5px 12px;border:1px solid var(--bdr);border-radius:20px;font-size:11px;font-family:inherit;outline:none;background:var(--bg)" oninput="filterSearch(this.value)">
     </div>
     <table class="ptbl"><thead><tr>
       <th>Patient</th><th>Age</th><th>Risk</th><th>Diagnoses</th>
@@ -396,6 +397,7 @@ select.fb{padding:4px 8px}
 <script>
 // All patient data loaded from embedded JSON - no escaping issues
 var PTS = JSON.parse(document.getElementById('pts-data').textContent);
+  (function(){var _s=localStorage.getItem("jusoor_pts");if(_s){try{PTS=JSON.parse(_s);}catch(e){}}})();
 
 // Patch missing fields
 PTS.forEach(function(p) {
@@ -1256,7 +1258,7 @@ function submitAddPatient() {
   p.al = buildAlerts(p);
   if (!p.ldlTarget) p.ldlTarget = hasIHD ? 1.8 : 2.6;
 
-  PTS.push(p);
+  PTS.unshift(p);
   closeAddPatient();
   refreshAll();
 
@@ -1291,6 +1293,197 @@ function showToast(msg, bg) {
 // ── Init ──────────────────────────────────────────────────────────────────
 renderList();
 setTimeout(initOv, 100);
+
+
+// ============================================================
+// JUSOOR REACTIVE ENHANCEMENTS v8.2 – added for live demo
+// ============================================================
+
+// ── localStorage persistence ──────────────────────────────
+function savePTS() {
+  try { localStorage.setItem('jusoor_pts', JSON.stringify(PTS)); } catch(e) {}
+}
+
+// Patch refreshAll to auto-save
+var _origRefreshAll = refreshAll;
+refreshAll = function() {
+  _origRefreshAll();
+  savePTS();
+  updateClock();
+};
+
+// ── Live clock ─────────────────────────────────────────────
+function updateClock() {
+  var el = document.getElementById('live-clock');
+  if (!el) return;
+  var now = new Date();
+  el.textContent = now.toLocaleTimeString('en-SA', {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Search filter ──────────────────────────────────────────
+var _searchQuery = '';
+function filterSearch(q) {
+  _searchQuery = (q || '').toLowerCase().trim();
+  renderList();
+}
+
+// Wrap renderList to support search
+var _origRenderList = renderList;
+renderList = function() {
+  _origRenderList();
+  if (!_searchQuery) return;
+  var tbody = document.getElementById('ptbody');
+  if (!tbody) return;
+  var rows = tbody.querySelectorAll('tr');
+  rows.forEach(function(row) {
+    var txt = row.textContent.toLowerCase();
+    row.style.display = txt.includes(_searchQuery) ? '' : 'none';
+  });
+  var visible = tbody.querySelectorAll('tr:not([style*="none"])').length;
+  var cnt = document.getElementById('fb-count');
+  if (cnt) cnt.textContent = visible;
+};
+
+// ── Edit patient ───────────────────────────────────────────
+var _editId = null;
+function openEditPatient(id) {
+  var p = PTS.find(function(x){ return x.id === id; });
+  if (!p) return;
+  _editId = id;
+  // Re-use add modal but pre-fill fields
+  var sv2 = function(fid, val) {
+    var el = document.getElementById(fid);
+    if (el) el.value = val !== undefined && val !== null ? val : '';
+  };
+  sv2('f-name', p.name);
+  sv2('f-age', p.age);
+  var sexEl = document.getElementById('f-sex');
+  if (sexEl) sexEl.value = p.sex || 'M';
+  sv2('f-bmi', p.bmi || '');
+  sv2('f-centre', p.centre || '');
+  sv2('f-doctor', p.doctor || '');
+  sv2('f-hba1c', p.hba1c || '');
+  sv2('f-sbp', p.sbp || '');
+  sv2('f-dbp', p.bp ? p.bp.split('/')[1] : '');
+  sv2('f-ef', p.ef || '');
+  sv2('f-bnp', p.bnp || '');
+  sv2('f-nyha', p.nyha || '');
+  sv2('f-egfr', p.egfr || '');
+  sv2('f-pot', p.pot || '');
+  sv2('f-bicarb', p.bicarb || '');
+  sv2('f-ldl', p.ldl || '');
+  sv2('f-hdl', p.hdl || '');
+  sv2('f-tg', p.tg || '');
+  sv2('f-adh', p.adh !== undefined ? p.adh : 70);
+  sv2('f-last', p.last || '');
+  // Set diagnoses checkboxes
+  ['dxc-dm','dxc-htn','dxc-hf','dxc-ckd','dxc-lip','dxc-ihd'].forEach(function(cid) {
+    var map = {'dxc-dm':'T2DM','dxc-htn':'Hypertension','dxc-hf':'Heart Failure','dxc-ckd':'CKD','dxc-lip':'Dyslipidaemia','dxc-ihd':'IHD'};
+    var cb = document.getElementById(cid);
+    if (cb) cb.checked = p.dx && p.dx.some(function(d){ return d.toLowerCase().includes(map[cid].toLowerCase().split(' ')[0].toLowerCase()); });
+  });
+  // Change modal title and button
+  var titleEl = document.querySelector('.modal-hdr-title');
+  if (titleEl) titleEl.textContent = '\u270F\uFE0F Edit Patient';
+  var saveBtnEl = document.querySelector('button[onclick="submitAddPatient()"]');
+  if (saveBtnEl) saveBtnEl.textContent = 'Save Changes';
+  document.getElementById('addPtModal').classList.add('open');
+  calcRisk();
+}
+
+// ── Delete patient ─────────────────────────────────────────
+function deletePatient(id) {
+  var p = PTS.find(function(x){ return x.id === id; });
+  if (!p) return;
+  if (!confirm('Remove ' + p.name + ' from the registry?')) return;
+  PTS = PTS.filter(function(x){ return x.id !== id; });
+  selPt = null;
+  var detEl = document.getElementById('det');
+  if (detEl) detEl.innerHTML = '<div class="det-emp"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 11c0 2.21-1.79 4-4 4s-4-1.79-4-4 1.79-4 4-4 4 1.79 4 4z"/><path d="M2 21v-1c0-4.42 3.58-8 8-8h4c4.42 0 8 3.58 8 8v1"/></svg><div>Select a patient to view details</div></div>';
+  refreshAll();
+  showToast('\u2705 Patient removed from registry', '#27500a');
+}
+
+// ── Patch submitAddPatient to handle Edit mode ──────────────
+var _origSubmit = submitAddPatient;
+submitAddPatient = function() {
+  if (_editId) {
+    // Edit mode: update in-place
+    var idx = PTS.findIndex(function(x){ return x.id === _editId; });
+    if (idx !== -1) {
+      // Save then close
+      var sv3 = function(id) { return (document.getElementById(id) || {}).value || ''; };
+      PTS[idx].name = sv3('f-name') || PTS[idx].name;
+      PTS[idx].age = parseInt(sv3('f-age')) || PTS[idx].age;
+      PTS[idx].sex = sv3('f-sex') || PTS[idx].sex;
+      PTS[idx].centre = sv3('f-centre') || PTS[idx].centre;
+      PTS[idx].doctor = sv3('f-doctor') || PTS[idx].doctor;
+      PTS[idx].bmi = parseFloat(sv3('f-bmi')) || PTS[idx].bmi;
+      PTS[idx].hba1c = parseFloat(sv3('f-hba1c')) || PTS[idx].hba1c;
+      var sbp = parseInt(sv3('f-sbp')), dbp = parseInt(sv3('f-dbp'));
+      if (sbp) { PTS[idx].sbp = sbp; if (dbp) PTS[idx].bp = sbp+'/'+dbp; }
+      if (sv3('f-ldl')) PTS[idx].ldl = parseFloat(sv3('f-ldl'));
+      if (sv3('f-hdl')) PTS[idx].hdl = parseFloat(sv3('f-hdl'));
+      if (sv3('f-egfr')) PTS[idx].egfr = parseInt(sv3('f-egfr'));
+      PTS[idx].adh = parseInt(sv3('f-adh')) || PTS[idx].adh;
+      if (sv3('f-last')) PTS[idx].last = sv3('f-last');
+      selPt = PTS[idx];
+      closeAddPatient();
+      _editId = null;
+      // Reset modal title
+      var titleEl2 = document.querySelector('.modal-hdr-title');
+      if (titleEl2) titleEl2.textContent = '\u2795 Enrol New Patient';
+      var saveBtnEl2 = document.querySelector('button[onclick="submitAddPatient()"]');
+      if (saveBtnEl2) saveBtnEl2.textContent = 'Enrol Patient';
+      refreshAll();
+      renderDetail();
+      showToast('\u2705 Patient record updated', '#27500a');
+      return;
+    }
+    _editId = null;
+  }
+  _origSubmit();
+};
+
+// ── Add Edit/Delete action buttons to patient detail ────────
+// Patch renderDetail to inject action buttons
+var _origRenderDetail = renderDetail;
+renderDetail = function() {
+  _origRenderDetail();
+  if (!selPt) return;
+  // Find the det-hdr and inject buttons
+  var hdr = document.querySelector('#det .det-hdr');
+  if (!hdr || hdr.querySelector('.edit-del-btns')) return;
+  var btnDiv = document.createElement('div');
+  btnDiv.className = 'edit-del-btns';
+  btnDiv.style.cssText = 'display:flex;gap:5px;margin-top:7px';
+  btnDiv.innerHTML = '<button onclick="openEditPatient(selPt.id)" style="padding:3px 11px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;font-size:10px;font-family:inherit">&#9998; Edit</button>'
+    +'<button onclick="deletePatient(selPt.id)" style="padding:3px 11px;border-radius:6px;border:1px solid rgba(255,100,100,.35);background:rgba(255,80,80,.12);color:#ffbbbb;cursor:pointer;font-size:10px;font-family:inherit">&#128465; Remove</button>';
+  hdr.appendChild(btnDiv);
+};
+
+// ── Patch closeAddPatient to reset edit state ───────────────
+var _origClose = closeAddPatient;
+closeAddPatient = function() {
+  _editId = null;
+  var titleEl3 = document.querySelector('.modal-hdr-title');
+  if (titleEl3) titleEl3.textContent = '\u2795 Enrol New Patient';
+  var saveBtnEl3 = document.querySelector('button[onclick="submitAddPatient()"]');
+  if (saveBtnEl3) saveBtnEl3.textContent = 'Enrol Patient';
+  _origClose();
+};
+
+// ── Auto-save hint + stats counter ────────────────────────
+setTimeout(function() {
+  // Update patient count in title bar dynamically
+  var tsb = document.getElementById('tsb');
+  if (tsb && PTS) {
+    var parts = tsb.textContent.split(' \u00b7 ');
+    if (parts.length >= 2) tsb.textContent = parts[0] + ' \u00b7 ' + PTS.length + ' patients \u00b7 ' + parts[parts.length - 1];
+  }
+}, 200);
 
 </script>
 <!-- ── Add Patient Modal ──────────────────────────────────────────────── -->
