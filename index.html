@@ -152,6 +152,10 @@ select.fb{padding:4px 8px}
 .mfg input:focus,.mfg select:focus{border-color:var(--nv)}
 .mfg .hint{font-size:9px;color:var(--su)}
 .dx-checks{display:flex;flex-wrap:wrap;gap:6px}
+
+.med-chk{font-size:11px;display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;cursor:pointer;background:var(--sur);transition:background .1s;}
+.med-chk:hover{background:var(--bll);}
+.med-chk input{margin:0;cursor:pointer;}
 .dx-chk{display:flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--bdr);border-radius:20px;cursor:pointer;font-size:11px;transition:all .12s;user-select:none}
 .dx-chk input{display:none}
 .dx-chk.checked{background:var(--nv);color:#fff;border-color:var(--nv)}
@@ -1645,6 +1649,15 @@ function openAddPatient() {
   document.getElementById('addPtModal').classList.add('open');
   calcRisk();
 }
+
+  // Set default follow-up date to 7 days from now
+  var fuDate = document.getElementById('f-followup-date');
+  if (fuDate) {
+    var d = new Date(); d.setDate(d.getDate() + 7);
+    fuDate.value = d.toISOString().split('T')[0];
+  }
+  buildAutoActions();
+
 function closeAddPatient() {
   document.getElementById('addPtModal').classList.remove('open');
 }
@@ -1659,6 +1672,51 @@ function toggleDxSection(sec, cb) {
     var fg = document.getElementById('fg-egfr-base');
     if (fg) fg.style.display = cb.checked ? 'none' : 'flex';
   }
+  // show/hide the matching medication group (sec uses dm/htn/hf/ckd/lip)
+  var medGrp = document.getElementById('med-' + sec + '-group');
+  if (medGrp) medGrp.style.display = cb.checked ? '' : 'none';
+  buildAutoActions();
+}
+
+function buildAutoActions() {
+  var el = document.getElementById('auto-actions');
+  if (!el) return;
+  function isChecked(id){ var e=document.getElementById(id); return e && e.checked; }
+  function numVal(id){ var e=document.getElementById(id); return e ? parseFloat(e.value) : NaN; }
+  var actions = [];
+
+  if (isChecked('dxc-dm-input') || (document.querySelector('#dxc-dm input') && document.querySelector('#dxc-dm input').checked)) {
+    var hba1c = numVal('f-hba1c');
+    if (hba1c > 9) actions.push({t:'Call physician: HbA1c '+hba1c+'% — urgent medication intensification', c:'#7a1515', bg:'#fcebeb'});
+    else if (hba1c > 7) actions.push({t:'Schedule medication review — HbA1c '+hba1c+'% above target', c:'#6b3500', bg:'#faeeda'});
+    actions.push({t:'Order: HbA1c + lipid profile + urine ACR at first visit', c:'#0c447c', bg:'#e6f1fb'});
+    if (!isChecked('m-sglt2') && !isChecked('m-ckd-sglt2'))
+      actions.push({t:'AI flag: SGLT2i gap — consider Empagliflozin (CV + kidney benefit, ADA 2024)', c:'#7a1515', bg:'#fcebeb'});
+  }
+  if (document.querySelector('#dxc-htn input') && document.querySelector('#dxc-htn input').checked) {
+    var sbp = numVal('f-sbp');
+    if (sbp > 160) actions.push({t:'Urgent: SBP '+sbp+' mmHg — same-day physician review', c:'#7a1515', bg:'#fcebeb'});
+    else if (sbp > 140) actions.push({t:'BP '+sbp+' mmHg — review antihypertensive regimen', c:'#6b3500', bg:'#faeeda'});
+    if (!isChecked('m-acei') && !isChecked('m-arb'))
+      actions.push({t:'AI flag: RAAS not prescribed — ACE/ARB indicated for DM/CKD protection', c:'#6b3500', bg:'#faeeda'});
+  }
+  if (document.querySelector('#dxc-hf input') && document.querySelector('#dxc-hf input').checked) {
+    if (!isChecked('m-arni'))
+      actions.push({t:'AI flag: ARNI (Sacubitril/Valsartan) not prescribed — ESC 2023 Class I for HFrEF', c:'#7a1515', bg:'#fcebeb'});
+    actions.push({t:'Arrange echocardiogram for EF confirmation', c:'#0c447c', bg:'#e6f1fb'});
+    actions.push({t:'Cardiology referral — heart failure management', c:'#0c447c', bg:'#e6f1fb'});
+  }
+  if (document.querySelector('#dxc-ckd input') && document.querySelector('#dxc-ckd input').checked) {
+    var egfr = numVal('f-egfr');
+    if (egfr < 30) actions.push({t:'Urgent: eGFR '+egfr+' — nephrology referral, pre-dialysis planning', c:'#7a1515', bg:'#fcebeb'});
+    else if (egfr < 45) actions.push({t:'CKD Stage 3b — nephrology referral + review RAAS dosing', c:'#6b3500', bg:'#faeeda'});
+    actions.push({t:'Order: eGFR + K+ + HCO3 + urine PCR at enrolment', c:'#0c447c', bg:'#e6f1fb'});
+  }
+
+  if (!actions.length) actions.push({t:'Select diagnoses and enter clinical values above to auto-generate AI actions', c:'#5a6577', bg:'#f4f6f8'});
+  el.innerHTML = actions.map(function(a){
+    return '<div style="background:'+a.bg+';border-left:3px solid '+a.c+';border-radius:0 7px 7px 0;padding:7px 10px;margin-bottom:5px;font-size:11px;color:'+a.c+';font-weight:500">'+a.t+'</div>';
+  }).join('');
 }
 
 function v(id){ var e=document.getElementById(id); return e?(parseFloat(e.value)||0):0; }
@@ -1722,106 +1780,184 @@ function buildAlerts(p) {
 }
 
 function submitAddPatient() {
-  var name = sv('f-name');
-  var age  = parseInt(sv('f-age'));
-  var sex  = sv('f-sex');
-  var ctr  = sv('f-centre');
-  if (!name || !age || !sex || !ctr) {
-    showToast(' Please fill in Name, Age, Sex and Centre', '#e24b4a');
-    return;
+  var name = document.getElementById('f-name').value.trim();
+  if (!name) { alert('Please enter the patient name.'); return; }
+
+  var dxCbs = document.querySelectorAll('#dx-checks input:checked');
+  var dx = Array.from(dxCbs).map(function(c){ return c.value; });
+  if (!dx.length) { alert('Please select at least one diagnosis.'); return; }
+
+  // Collect medications
+  var medIds = ['m-metformin','m-sglt2','m-glp1','m-dpp4','m-su','m-insulin',
+    'm-acei','m-arb','m-ccb','m-bb','m-thiaz','m-alpha',
+    'm-arni','m-hf-sglt2','m-mra','m-loop','m-ivab','m-dig',
+    'm-statin-hi','m-statin-mod','m-ezet','m-pcsk9','m-fibrate',
+    'm-ckd-sglt2','m-finer','m-bicarb-tab','m-epo','m-kayexalate','m-vitd'];
+  var medLabels = {
+    'm-metformin':'Metformin 1000mg','m-sglt2':'Empagliflozin 10mg','m-glp1':'Semaglutide 0.5mg',
+    'm-dpp4':'Sitagliptin 100mg','m-su':'Glibenclamide 5mg','m-insulin':'Insulin (basal)',
+    'm-acei':'Ramipril 5mg','m-arb':'Valsartan 80mg','m-ccb':'Amlodipine 5mg',
+    'm-bb':'Bisoprolol 5mg','m-thiaz':'Hydrochlorothiazide 25mg','m-alpha':'Doxazosin 4mg',
+    'm-arni':'Sacubitril/Valsartan 49/51mg','m-hf-sglt2':'Dapagliflozin 10mg',
+    'm-mra':'Spironolactone 25mg','m-loop':'Furosemide 40mg','m-ivab':'Ivabradine 5mg',
+    'm-dig':'Digoxin 0.125mg','m-statin-hi':'Atorvastatin 40mg','m-statin-mod':'Rosuvastatin 10mg',
+    'm-ezet':'Ezetimibe 10mg','m-pcsk9':'Evolocumab 140mg','m-fibrate':'Fenofibrate 145mg',
+    'm-ckd-sglt2':'Dapagliflozin 10mg (CKD)','m-finer':'Finerenone 10mg',
+    'm-bicarb-tab':'Sodium bicarbonate 500mg','m-epo':'Erythropoietin',
+    'm-kayexalate':'Patiromer 8.4g','m-vitd':'Calcitriol 0.25mcg'
+  };
+  var medInds = {
+    'm-metformin':'T2DM','m-sglt2':'T2DM','m-glp1':'T2DM','m-dpp4':'T2DM','m-su':'T2DM','m-insulin':'T2DM',
+    'm-acei':'Hypertension','m-arb':'Hypertension','m-ccb':'Hypertension','m-bb':'Hypertension',
+    'm-thiaz':'Hypertension','m-alpha':'Hypertension',
+    'm-arni':'Heart Failure','m-hf-sglt2':'Heart Failure','m-mra':'Heart Failure',
+    'm-loop':'Heart Failure','m-ivab':'Heart Failure','m-dig':'Heart Failure',
+    'm-statin-hi':'Dyslipidaemia','m-statin-mod':'Dyslipidaemia','m-ezet':'Dyslipidaemia',
+    'm-pcsk9':'Dyslipidaemia','m-fibrate':'Dyslipidaemia',
+    'm-ckd-sglt2':'CKD','m-finer':'CKD','m-bicarb-tab':'CKD','m-epo':'CKD',
+    'm-kayexalate':'CKD','m-vitd':'CKD'
+  };
+  var meds = medIds.filter(function(id){
+    var el=document.getElementById(id); return el && el.checked;
+  }).map(function(id){
+    return {n:medLabels[id]||id, ind:medInds[id]||'General', del:true, ref:false, opt:true, note:''};
+  });
+
+  // Collect education completed
+  var eduIds=['edu-dsme','edu-med','edu-diet','edu-activity','edu-bg','edu-bp','edu-foot','edu-smoking','edu-sehhaty','edu-raqeem'];
+  var eduLabels={'edu-dsme':'Disease self-management','edu-med':'Medication adherence','edu-diet':'Diet counselling',
+    'edu-activity':'Physical activity','edu-bg':'Blood glucose monitoring','edu-bp':'BP home monitoring',
+    'edu-foot':'Foot care education','edu-smoking':'Smoking cessation','edu-sehhaty':'Sehhaty app training',
+    'edu-raqeem':'Raqeem portal access'};
+  var eduDone = eduIds.filter(function(id){var el=document.getElementById(id);return el&&el.checked;})
+    .map(function(id){return eduLabels[id];});
+
+  // Collect manual actions
+  var actIds=['act-retinal','act-nephro','act-cardio','act-echo','act-labs','act-dietitian','act-physio','act-pharm','act-psych','act-pcp'];
+  var actLabels={'act-retinal':'Book retinal exam','act-nephro':'Nephrology referral',
+    'act-cardio':'Cardiology referral','act-echo':'Arrange echocardiogram',
+    'act-labs':'Order baseline labs','act-dietitian':'Refer to dietitian',
+    'act-physio':'Refer to physiotherapist','act-pharm':'Medication delivery setup',
+    'act-psych':'PHQ-9 depression screen','act-pcp':'PCP review in 2 weeks'};
+  var manualActions = actIds.filter(function(id){var el=document.getElementById(id);return el&&el.checked;})
+    .map(function(id){return actLabels[id];});
+
+  var hba1c = parseFloat(document.getElementById('f-hba1c').value) || null;
+  var sbp   = parseInt(document.getElementById('f-sbp').value)    || 130;
+  var dbp   = parseInt(document.getElementById('f-dbp').value)    || 82;
+  var egfr  = parseInt(document.getElementById('f-egfr').value||document.getElementById('f-egfr-base').value) || 72;
+  var pot   = parseFloat(document.getElementById('f-pot').value)  || 4.2;
+  var bicarb= parseInt(document.getElementById('f-bicarb').value) || 24;
+  var ldl   = parseFloat(document.getElementById('f-ldl').value)  || 2.8;
+  var hdl   = parseFloat(document.getElementById('f-hdl').value)  || 1.1;
+  var tg    = parseFloat(document.getElementById('f-tg').value)   || 1.7;
+  var ef    = parseInt(document.getElementById('f-ef').value)     || null;
+  var bnp   = parseInt(document.getElementById('f-bnp').value)    || null;
+  var nyha  = document.getElementById('f-nyha').value             || null;
+  var adh   = parseInt(document.getElementById('f-adh').value)    || 70;
+  var diet  = parseInt(document.getElementById('f-diet').value)   || 55;
+  var ex    = parseInt(document.getElementById('f-ex').value)     || 40;
+  var age   = parseInt(document.getElementById('f-age').value)    || 50;
+  var sex   = document.getElementById('f-sex').value              || 'M';
+  var bmi   = parseFloat(document.getElementById('f-bmi').value)  || 27.0;
+  var centre= document.getElementById('f-centre').value           || 'PHC Al-Olaya';
+  var doctor= document.getElementById('f-doctor').value           || 'Dr. Al-Qahtani';
+  var mrn   = document.getElementById('f-mrn').value              || ('SA-' + (1000 + Math.floor(Math.random()*8999)));
+  var ckdSt = null;
+  if (dx.indexOf('CKD') !== -1) {
+    if(egfr<15) ckdSt='5'; else if(egfr<30) ckdSt='4'; else if(egfr<45) ckdSt='3b'; else if(egfr<60) ckdSt='3a';
   }
+  var summary = document.getElementById('f-summary').value;
+  var goal    = document.getElementById('f-goal').value;
+  var followup= document.getElementById('f-followup-date').value || '7 days ago';
+  var notes   = document.getElementById('f-action-notes').value;
 
-  var dxChecks = document.querySelectorAll('#dx-checks input:checked');
-  var dxVals   = Array.from(dxChecks).map(function(c){ return c.value; });
-  var dxLabels = {T2DM:'Type 2 Diabetes',HTN:'Hypertension',HF:'Heart Failure',CKD:'CKD Stage 3a',Lip:'Dyslipidaemia',IHD:'IHD / CAD'};
-  var dx = dxVals.map(function(v){ return dxLabels[v]||v; });
-  if (!dx.length) dx = ['Chronic Disease — under review'];
+  // Build screening object
+  var sc = {
+    'Retinal exam': [document.getElementById('f-retinal') ? document.getElementById('f-retinal').value : 'due', '— enrolment'],
+    'Neuropathy': ['due', '— not yet done'],
+    'Foot exam': ['due', '— not yet done'],
+    'ACR urine': ['due', '— order at first visit'],
+    'eGFR / Creatinine': ['done', '— enrolment · eGFR '+egfr],
+    'Fasting lipids': ['done', '— enrolment · LDL '+ldl],
+    'Flu vaccine': ['due', '— check at first visit'],
+    'PHQ-9 depression': ['due', '— screen at first visit']
+  };
 
-  var hasDM  = dxVals.includes('T2DM');
-  var hasHTN = dxVals.includes('HTN');
-  var hasHF  = dxVals.includes('HF');
-  var hasCKD = dxVals.includes('CKD');
-  var hasLip = dxVals.includes('Lip') || dxVals.includes('IHD');
-  var hasIHD = dxVals.includes('IHD');
+  // Build alerts from clinical values
+  var al = [];
+  if (hba1c && hba1c > 9) al.push(['R', 'HbA1c ' + hba1c + '% — urgent medication review needed']);
+  if (hba1c && hba1c > 7) al.push(['Y', 'HbA1c ' + hba1c + '% — above target, optimise therapy']);
+  if (sbp > 160) al.push(['R', 'BP ' + sbp + '/' + dbp + ' mmHg — urgent antihypertensive review']);
+  if (sbp > 140) al.push(['Y', 'BP ' + sbp + '/' + dbp + ' mmHg — not at target']);
+  if (egfr < 30)  al.push(['R', 'eGFR ' + egfr + ' mL/min — Stage 4 CKD, nephrology referral urgently needed']);
+  if (egfr < 60)  al.push(['Y', 'eGFR ' + egfr + ' mL/min — CKD, monitor closely']);
+  if (ef !== null && ef < 40) al.push(['R', 'EF ' + ef + '% — HFrEF, ensure GDMT complete']);
+  if (adh < 60)  al.push(['Y', 'Medication adherence ' + adh + '% — adherence coaching needed']);
+  if (al.length === 0) al.push(['G', 'New enrolment — values within acceptable range at baseline']);
 
-  var sbp = v('f-sbp') || 135;
-  var dbp = v('f-dbp') || 85;
-  var egfr = hasCKD ? (v('f-egfr')||55) : (v('f-egfr-base')||75);
+  // Build log from education + actions
+  var logEntries = [['Enrolment', 'Patient enrolled — ' + (eduDone.length ? eduDone.slice(0,2).join(', ') + ' completed' : 'baseline assessment')]];
+  if (manualActions.length) logEntries.push(['Actions planned', manualActions.slice(0,2).join(', ')]);
+  if (notes) logEntries.push(['Notes', notes.substring(0, 60)]);
 
   var p = {
-    id:       'PT' + String(PTS.length + 1).padStart(3,'0'),
-    name:     name,
-    age:      age,
-    sex:      sex,
-    doctor:   sv('f-doctor') || 'Dr. Al-Qahtani',
-    centre:   ctr,
-    enrolled: 'May 2026',
-    last:     sv('f-last') || '27 May 2026',
-    dx:       dx,
-    risk:     calcRisk(),
-    hba1c:    hasDM  ? (v('f-hba1c')||8.0) : null,
-    hba1c_trend: hasDM ? [v('f-hba1c')||8.0, v('f-hba1c')||8.0, v('f-hba1c')||8.0, v('f-hba1c')||8.0] : [0,0,0,0],
-    sbp:      hasHTN ? sbp : (sbp||130),
-    dbp:      hasHTN ? dbp : (dbp||82),
-    bp:       (hasHTN ? sbp : (sbp||130)) + '/' + (hasHTN ? dbp : (dbp||82)),
-    ht_ctrl:  sbp < 130,
-    ht_target: (hasDM||hasCKD) ? '<130/80' : '<140/90',
-    ef:       hasHF  ? (v('f-ef')||42)   : null,
-    bnp:      hasHF  ? (v('f-bnp')||250) : null,
-    nyha:     hasHF  ? sv('f-nyha')||'II' : null,
-    egfr:     egfr,
-    ckd_stage: hasCKD ? (egfr>=45?'3a':egfr>=30?'3b':egfr>=15?'4':'5') : null,
-    pot:      hasCKD ? (v('f-pot')||4.3)   : 4.1,
-    bicarb:   hasCKD ? (v('f-bicarb')||23) : 24,
-    acr:      hasDM  ? (v('f-acr')||15)    : 8,
-    ldl:      hasLip ? (v('f-ldl')||2.8)   : 2.2,
-    hdl:      hasLip ? (v('f-hdl')||1.1)   : 1.2,
-    tg:       hasLip ? (v('f-tg')||1.6)    : 1.4,
-    ldlTarget: hasIHD ? 1.8 : 2.6,
-    bmi:      v('f-bmi') || 28,
-    adh:      v('f-adh') || 70,
-    ex:       50,
-    diet:     55,
-    meds:     [],
-    sc: {
-      'Retinal exam':       [sv('f-retinal')||'due',     'Not yet recorded'],
-      'Neuropathy':         ['due',  'Not yet recorded'],
-      'Foot exam':          ['due',  'Not yet recorded'],
-      'ACR urine':          ['due',  'Not yet recorded'],
-      'Flu vaccine':        ['due',  'Not yet recorded'],
-      'PHQ-9 depression':   ['due',  'Not yet recorded']
-    },
-    age_screen: { 'Colonoscopy': 'Due — not yet scheduled', 'Lipid screen': 'Due' },
-    edu: [
-      ['Chronic disease self-management', 0],
-      ['Healthy lifestyle programme', 0]
-    ],
-    log: [['27 May 2026', 'Patient enrolled via PHC programme — baseline assessment scheduled']]
+    id: mrn, name: name, age: age, sex: sex, risk: 'Y',
+    doctor: doctor, centre: centre,
+    dx: dx.map(function(d){
+      var map={'T2DM':'T2DM','HTN':'Hypertension','HF':'Heart Failure (HFrEF)','CKD':'CKD Stage '+(ckdSt||'3a'),'Lip':'Dyslipidaemia','IHD':'IHD'};
+      return map[d]||d;
+    }),
+    last: followup || '0 days ago',
+    hba1c: hba1c,
+    hba1c_trend: hba1c ? [hba1c,hba1c,hba1c,hba1c] : [null,null,null,null],
+    sbp: sbp, bp: sbp+'/'+dbp,
+    bp_trend: [sbp, sbp, sbp, sbp],
+    ldl: ldl, hdl: hdl, tg: tg,
+    egfr: egfr, acr: parseFloat(document.getElementById('f-acr')&&document.getElementById('f-acr').value)||10,
+    pot: pot, bicarb: bicarb,
+    ef: ef, bnp: bnp, nyha: nyha && nyha.replace('I','').replace('V','').length > 0 ? parseInt(nyha.replace(/\D/g,''))||null : null,
+    ckd_stage: ckdSt, bmi: bmi,
+    adh: adh, ex: ex, diet: diet,
+    ht_ctrl: sbp <= 130,
+    ht_target: '<130/80',
+    dm_type: dx.indexOf('T2DM') !== -1 ? 'T2DM' : null,
+    c_peptide: dx.indexOf('T2DM') !== -1 ? 'Normal-High' : null,
+    autoab: 'Negative',
+    sc: sc,
+    al: al,
+    log: logEntries,
+    meds: meds.length ? meds : [{n:'Review at first visit',ind:'General',del:false,ref:false,opt:false,note:''}],
+    ldlTarget: dx.indexOf('IHD')!==-1 ? 1.8 : dx.indexOf('Lip')!==-1 ? 2.6 : 3.0,
+    enrolled: new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'}),
+    edu_done: eduDone,
+    care_goal: goal,
+    clinical_summary: summary,
+    action_plan: manualActions
   };
-  p.al = buildAlerts(p);
-  if (!p.ldlTarget) p.ldlTarget = hasIHD ? 1.8 : 2.6;
+
+  // Calculate risk
+  var riskScore = calcRisk1Year(p);
+  p.risk = riskScore >= 70 ? 'R' : riskScore >= 40 ? 'Y' : 'G';
 
   PTS.push(p);
   closeAddPatient();
   refreshAll();
+  renderDiseaseSummaryRow();
 
   // Navigate to Patient Panel and select the new patient
   var ptSi = document.querySelector('.si[data-view="pt"]');
   showView('pt', ptSi);
   setTimeout(function(){ selPat(p.id); }, 80);
 
-  showToast('✓ '+name+' enrolled — all dashboards updated ('+PTS.length+' patients)');
-
-  // Reset form
-  document.querySelectorAll('#addPtModal input, #addPtModal select').forEach(function(el){
-    if (el.type==='checkbox') el.checked = false;
-    else if (el.id==='f-adh') el.value='70';
-    else if (el.id==='f-last') el.value='27 May 2026';
-    else el.value='';
-  });
-  document.querySelectorAll('.cond-section').forEach(function(s){ s.style.display='none'; });
-  document.querySelectorAll('.dx-chk').forEach(function(l){ l.classList.remove('checked'); });
-  document.getElementById('fg-egfr-base').style.display='flex';
+  // Show confirmation toast
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;background:#1a2b4a;color:#fff;padding:14px 20px;border-radius:9px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);max-width:320px';
+  toast.innerHTML = '<div style="margin-bottom:4px">Patient Enrolled Successfully</div>'
+    + '<div style="font-size:11px;opacity:.8">' + name + ' · ' + centre.replace('PHC ','') + '</div>'
+    + '<div style="font-size:10px;opacity:.65;margin-top:3px">AI Risk: ' + riskScore + '% · ' + meds.length + ' medications · ' + eduDone.length + ' education items</div>';
+  document.body.appendChild(toast);
+  setTimeout(function(){toast.style.opacity='0';toast.style.transition='opacity .5s';setTimeout(function(){toast.remove();},500);}, 4000);
 }
 
 function showToast(msg, bg) {
@@ -2041,6 +2177,161 @@ setTimeout(initOv, 100);
           <input id="f-last" type="text" placeholder="e.g. 22 May 2026" value="27 May 2026">
         </div>
       </div>
+
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SECTION 3: CURRENT MEDICATIONS            -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="msec" style="margin-top:14px">Current Medications <span style="font-size:10px;color:var(--mu);font-weight:400">(select all the patient is currently taking)</span></div>
+
+      <div id="med-dm-group" style="display:none">
+        <div style="font-size:10px;font-weight:700;color:#378add;text-transform:uppercase;letter-spacing:.07em;margin:8px 0 5px">Diabetes Medications</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <label class="med-chk"><input type="checkbox" id="m-metformin" value="Metformin 1000mg"> Metformin</label>
+          <label class="med-chk"><input type="checkbox" id="m-sglt2" value="Empagliflozin 10mg"> SGLT2i (Empagliflozin)</label>
+          <label class="med-chk"><input type="checkbox" id="m-glp1" value="Semaglutide 0.5mg"> GLP-1 RA (Semaglutide)</label>
+          <label class="med-chk"><input type="checkbox" id="m-dpp4" value="Sitagliptin 100mg"> DPP-4 inhibitor</label>
+          <label class="med-chk"><input type="checkbox" id="m-su" value="Glibenclamide 5mg"> Sulphonylurea</label>
+          <label class="med-chk"><input type="checkbox" id="m-insulin" value="Insulin (basal)"> Insulin</label>
+        </div>
+      </div>
+
+      <div id="med-htn-group" style="display:none">
+        <div style="font-size:10px;font-weight:700;color:#ef9f27;text-transform:uppercase;letter-spacing:.07em;margin:8px 0 5px">Antihypertensive Medications</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <label class="med-chk"><input type="checkbox" id="m-acei" value="Ramipril 5mg"> ACE Inhibitor</label>
+          <label class="med-chk"><input type="checkbox" id="m-arb" value="Valsartan 80mg"> ARB (Valsartan)</label>
+          <label class="med-chk"><input type="checkbox" id="m-ccb" value="Amlodipine 5mg"> CCB (Amlodipine)</label>
+          <label class="med-chk"><input type="checkbox" id="m-bb" value="Bisoprolol 5mg"> Beta-blocker</label>
+          <label class="med-chk"><input type="checkbox" id="m-thiaz" value="Hydrochlorothiazide 25mg"> Thiazide diuretic</label>
+          <label class="med-chk"><input type="checkbox" id="m-alpha" value="Doxazosin 4mg"> Alpha-blocker</label>
+        </div>
+      </div>
+
+      <div id="med-hf-group" style="display:none">
+        <div style="font-size:10px;font-weight:700;color:#e24b4a;text-transform:uppercase;letter-spacing:.07em;margin:8px 0 5px">Heart Failure Medications</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <label class="med-chk"><input type="checkbox" id="m-arni" value="Sacubitril/Valsartan 49/51mg"> ARNI (Entresto)</label>
+          <label class="med-chk"><input type="checkbox" id="m-hf-sglt2" value="Dapagliflozin 10mg"> SGLT2i (Dapagliflozin)</label>
+          <label class="med-chk"><input type="checkbox" id="m-mra" value="Spironolactone 25mg"> MRA (Spironolactone)</label>
+          <label class="med-chk"><input type="checkbox" id="m-loop" value="Furosemide 40mg"> Loop diuretic</label>
+          <label class="med-chk"><input type="checkbox" id="m-ivab" value="Ivabradine 5mg"> Ivabradine</label>
+          <label class="med-chk"><input type="checkbox" id="m-dig" value="Digoxin 0.125mg"> Digoxin</label>
+        </div>
+      </div>
+
+      <div id="med-lip-group" style="display:none">
+        <div style="font-size:10px;font-weight:700;color:#1d9e75;text-transform:uppercase;letter-spacing:.07em;margin:8px 0 5px">Lipid-Lowering Medications</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <label class="med-chk"><input type="checkbox" id="m-statin-hi" value="Atorvastatin 40mg"> Statin — High intensity</label>
+          <label class="med-chk"><input type="checkbox" id="m-statin-mod" value="Rosuvastatin 10mg"> Statin — Moderate</label>
+          <label class="med-chk"><input type="checkbox" id="m-ezet" value="Ezetimibe 10mg"> Ezetimibe</label>
+          <label class="med-chk"><input type="checkbox" id="m-pcsk9" value="Evolocumab 140mg"> PCSK9 inhibitor</label>
+          <label class="med-chk"><input type="checkbox" id="m-fibrate" value="Fenofibrate 145mg"> Fibrate</label>
+        </div>
+      </div>
+
+      <div id="med-ckd-group" style="display:none">
+        <div style="font-size:10px;font-weight:700;color:#7c4dff;text-transform:uppercase;letter-spacing:.07em;margin:8px 0 5px">CKD Medications</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <label class="med-chk"><input type="checkbox" id="m-ckd-sglt2" value="Dapagliflozin 10mg"> SGLT2i (kidney protection)</label>
+          <label class="med-chk"><input type="checkbox" id="m-finer" value="Finerenone 10mg"> Finerenone (Kerendia)</label>
+          <label class="med-chk"><input type="checkbox" id="m-bicarb-tab" value="Sodium bicarbonate 500mg"> Sodium bicarbonate</label>
+          <label class="med-chk"><input type="checkbox" id="m-epo" value="Erythropoietin"> ESA / Erythropoietin</label>
+          <label class="med-chk"><input type="checkbox" id="m-kayexalate" value="Patiromer 8.4g"> Potassium binder</label>
+          <label class="med-chk"><input type="checkbox" id="m-vitd" value="Calcitriol 0.25mcg"> Vitamin D analogue</label>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SECTION 4: CLINICAL SUMMARY               -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="msec" style="margin-top:14px">Clinical Summary <span style="font-size:10px;color:var(--mu);font-weight:400">— written by enrolling clinician</span></div>
+      <div class="mfg">
+        <label>Patient Background &amp; Reason for Enrolment</label>
+        <textarea id="f-summary" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical" placeholder="e.g. 58-year-old male with 5-year history of poorly controlled T2DM and newly diagnosed hypertension. HbA1c consistently above 9% despite dual therapy. Enrolled for intensive coordinator support, medication optimisation and retinal screening referral."></textarea>
+      </div>
+      <div class="mg2" style="margin-top:6px">
+        <div class="mfg">
+          <label>Primary Enrolment Goal</label>
+          <select id="f-goal">
+            <option value="glycaemic-control">Glycaemic control — HbA1c to target</option>
+            <option value="bp-control">BP control — reduce cardiovascular risk</option>
+            <option value="medication-optimisation">Medication optimisation — add guideline therapy</option>
+            <option value="ckd-slowing">CKD progression slowing</option>
+            <option value="hf-gdmt">Heart failure — GDMT completion</option>
+            <option value="multimorbidity">Multi-morbidity management</option>
+            <option value="adherence">Medication adherence improvement</option>
+            <option value="lifestyle">Lifestyle modification programme</option>
+          </select>
+        </div>
+        <div class="mfg">
+          <label>Enrolment Priority</label>
+          <select id="f-priority" onchange="calcRisk()">
+            <option value="urgent" style="color:#e24b4a">Urgent — same day review</option>
+            <option value="high">High — within 48 hours</option>
+            <option value="routine" selected>Routine — next scheduled slot</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SECTION 5: EDUCATION & LIFESTYLE          -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="msec" style="margin-top:14px">Education &amp; Lifestyle <span style="font-size:10px;color:var(--mu);font-weight:400">— baseline assessment</span></div>
+      <div class="mg2">
+        <div class="mfg">
+          <label>Diet Adherence (% self-reported)</label>
+          <input id="f-diet" type="number" min="0" max="100" placeholder="e.g. 60" value="55">
+          <span class="hint">Healthy eating guideline compliance</span>
+        </div>
+        <div class="mfg">
+          <label>Physical Activity (% of recommended)</label>
+          <input id="f-ex" type="number" min="0" max="100" placeholder="e.g. 40" value="40">
+          <span class="hint">150 min/week = 100%</span>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--mu);margin:10px 0 6px">Education sessions completed at enrolment:</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+        <label class="med-chk"><input type="checkbox" id="edu-dsme"> Disease self-management (DSME)</label>
+        <label class="med-chk"><input type="checkbox" id="edu-med"> Medication use &amp; adherence counselling</label>
+        <label class="med-chk"><input type="checkbox" id="edu-diet"> Diet &amp; nutrition counselling</label>
+        <label class="med-chk"><input type="checkbox" id="edu-activity"> Physical activity counselling</label>
+        <label class="med-chk"><input type="checkbox" id="edu-bg"> Blood glucose monitoring training</label>
+        <label class="med-chk"><input type="checkbox" id="edu-bp"> Blood pressure home monitoring</label>
+        <label class="med-chk"><input type="checkbox" id="edu-foot"> Foot care &amp; inspection education</label>
+        <label class="med-chk"><input type="checkbox" id="edu-smoking"> Smoking cessation counselling</label>
+        <label class="med-chk"><input type="checkbox" id="edu-sehhaty"> Sehhaty app registration &amp; training</label>
+        <label class="med-chk"><input type="checkbox" id="edu-raqeem"> Raqeem patient portal access</label>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SECTION 6: INITIAL ACTION PLAN            -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="msec" style="margin-top:14px">Initial Action Plan <span style="font-size:10px;color:var(--mu);font-weight:400">— tasks auto-generated, add manual items</span></div>
+      <div id="auto-actions" style="margin-bottom:10px"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--mu);margin:8px 0 6px">Add manual actions:</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+        <label class="med-chk"><input type="checkbox" id="act-retinal"> Book retinal examination</label>
+        <label class="med-chk"><input type="checkbox" id="act-nephro"> Nephrology referral</label>
+        <label class="med-chk"><input type="checkbox" id="act-cardio"> Cardiology referral</label>
+        <label class="med-chk"><input type="checkbox" id="act-echo"> Arrange echocardiogram</label>
+        <label class="med-chk"><input type="checkbox" id="act-labs"> Order baseline labs panel</label>
+        <label class="med-chk"><input type="checkbox" id="act-dietitian"> Refer to dietitian</label>
+        <label class="med-chk"><input type="checkbox" id="act-physio"> Refer to physiotherapist</label>
+        <label class="med-chk"><input type="checkbox" id="act-pharm"> Medication delivery setup</label>
+        <label class="med-chk"><input type="checkbox" id="act-psych"> PHQ-9 depression screen</label>
+        <label class="med-chk"><input type="checkbox" id="act-pcp"> Schedule PCP review in 2 weeks</label>
+      </div>
+      <div class="mfg" style="margin-top:8px">
+        <label>Follow-up date (first coordinator call)</label>
+        <input id="f-followup-date" type="date" style="padding:8px;border:1px solid var(--bdr);border-radius:7px;font-family:inherit;font-size:12px">
+      </div>
+      <div class="mfg" style="margin-top:6px">
+        <label>Additional notes for care team</label>
+        <textarea id="f-action-notes" rows="2" style="width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical" placeholder="e.g. Patient speaks Arabic only, needs translated materials. Family member (son) will attend first visit."></textarea>
+      </div>
+
 
       <div class="msec">Live Clinical Interpretation <span class="ai-tag">AI ✦</span></div>
 <div id="lpbox"><div id="lpbox-title">Enter values above — instant clinical interpretation</div><div id="lpbox-content"></div></div>
