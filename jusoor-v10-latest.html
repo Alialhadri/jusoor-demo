@@ -156,6 +156,21 @@ select.fb{padding:4px 8px}
 .med-chk{font-size:11px;display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--bdr);border-radius:6px;cursor:pointer;background:var(--sur);transition:background .1s;}
 .med-chk:hover{background:var(--bll);}
 .med-chk input{margin:0;cursor:pointer;}
+
+.ds-mode-btn{font-size:11px;padding:6px 13px;border:none;background:transparent;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600;color:var(--mu);}
+.ds-mode-btn.on{background:var(--sur);color:var(--nv);box-shadow:0 1px 3px rgba(0,0,0,.1);}
+.ds-conn{border:1px solid var(--bdr);border-radius:9px;padding:13px;background:var(--sur);}
+.ds-badge{font-size:9px;padding:2px 8px;border-radius:10px;font-weight:700;}
+.ds-ok{background:#eaf3de;color:#27500a;}
+.ds-pend{background:#faeeda;color:#6b3500;}
+.ds-off{background:#f0f0f0;color:#888;}
+.ds-phase{border:1px solid var(--bdr);border-radius:9px;padding:12px;background:var(--sur);}
+.ds-phase-active{border-top:3px solid var(--gr);background:#fafdf6;}
+.ds-phase-n{font-size:9px;font-weight:700;color:var(--su);text-transform:uppercase;letter-spacing:.08em;}
+.ds-phase-t{font-size:13px;font-weight:700;color:var(--nv);margin:3px 0 6px;}
+.ds-phase-d{font-size:10px;color:var(--mu);line-height:1.5;}
+.ds-phase-s{font-size:10px;color:var(--gr);font-weight:600;margin-top:8px;}
+.ds-ctr{border:1px solid var(--bdr);border-radius:8px;padding:10px;background:var(--sur);text-align:center;}
 .dx-chk{display:flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--bdr);border-radius:20px;cursor:pointer;font-size:11px;transition:all .12s;user-select:none}
 .dx-chk input{display:none}
 .dx-chk.checked{background:var(--nv);color:#fff;border-color:var(--nv)}
@@ -255,8 +270,9 @@ select.fb{padding:4px 8px}
     <div class="si" data-view="re">Disease Registry</div>
     <div class="si" data-view="va">Virtual Appointments</div>
     <div class="sb-sec">Connections</div>
-    <div class="si">Raqeem EHR Sync</div>
-    <div class="si">Sehhaty App</div>
+    <div class="si" data-view="ds" onclick="showView('ds',this);renderDsCentres()">Data Sources &amp; EHR</div>
+    <div class="si" data-view="ds" onclick="showView('ds',this);renderDsCentres()">Raqeem EHR Sync</div>
+    <div class="si" data-view="ds" onclick="showView('ds',this);renderDsCentres()">Sehhaty App</div>
   </div>
   <div class="sb-ft">
     <div class="sb-av">SG</div>
@@ -1068,10 +1084,11 @@ function showView(viewId, sidebarEl) {
   var titles = {
     ov:'Population Overview', wl:'Morning Educator Worklist', pt:'Patient Panel', an:'Analytics &mdash; Power BI',
     hu:'Morning Huddle',      dm:'Diabetes Module', ht:'Hypertension Module',
-    hf:'Heart Failure Module',ck:'CKD Module',      lp:'Hyperlipidaemia Module', re:'Disease Registry'
+    hf:'Heart Failure Module',ck:'CKD Module',      lp:'Hyperlipidaemia Module', re:'Disease Registry', ds:'Data Sources &amp; EHR Integration', va:'Virtual Appointments'
   };
   document.getElementById('ttl').innerHTML = titles[viewId] || viewId;
   if (viewId==='pt') document.getElementById('tsb').textContent = PTS.length+' patients · Multi-disease · Click any row for full profile';
+  if (viewId==='ds') { document.getElementById('tsb').textContent = 'EHR integration · National exchange · Pilot centre feeds'; renderDsCentres(); }
   if (viewId==='wl') { document.getElementById('tsb').textContent = 'Overnight AI analysis · Clinical priority alerts'; renderMorningWorklist(); }
   if (viewId==='an' && !window._an){ window._an=true; setTimeout(initAn,  80); }
   if (viewId==='hu') renderHuddle();
@@ -1647,16 +1664,15 @@ function refreshAll() {
 // ── Add Patient Modal Logic ───────────────────────────────────────────────
 function openAddPatient() {
   document.getElementById('addPtModal').classList.add('open');
-  calcRisk();
-}
-
   // Set default follow-up date to 7 days from now
   var fuDate = document.getElementById('f-followup-date');
   if (fuDate) {
     var d = new Date(); d.setDate(d.getDate() + 7);
     fuDate.value = d.toISOString().split('T')[0];
   }
-  buildAutoActions();
+  calcRisk();
+  if(typeof buildAutoActions==='function') buildAutoActions();
+}
 
 function closeAddPatient() {
   document.getElementById('addPtModal').classList.remove('open');
@@ -1675,7 +1691,7 @@ function toggleDxSection(sec, cb) {
   // show/hide the matching medication group (sec uses dm/htn/hf/ckd/lip)
   var medGrp = document.getElementById('med-' + sec + '-group');
   if (medGrp) medGrp.style.display = cb.checked ? '' : 'none';
-  buildAutoActions();
+  if(typeof buildAutoActions==='function') buildAutoActions();
 }
 
 function buildAutoActions() {
@@ -1718,6 +1734,8 @@ function buildAutoActions() {
     return '<div style="background:'+a.bg+';border-left:3px solid '+a.c+';border-radius:0 7px 7px 0;padding:7px 10px;margin-bottom:5px;font-size:11px;color:'+a.c+';font-weight:500">'+a.t+'</div>';
   }).join('');
 }
+window.buildAutoActions = buildAutoActions;
+
 
 function v(id){ var e=document.getElementById(id); return e?(parseFloat(e.value)||0):0; }
 function sv(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
@@ -2434,6 +2452,117 @@ setTimeout(initOv, 100);
 </div>
 </div>
 </div>
+<!-- DATA SOURCES / INTEGRATION -->
+<div class="view" id="vds">
+  <div style="max-width:1100px">
+
+    <!-- Mode banner -->
+    <div class="card" style="border-left:4px solid var(--am);margin-bottom:14px;background:#fffaf0">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--nv)">Data Source Mode</div>
+          <div style="font-size:12px;color:var(--mu);margin-top:2px">Switch how Jusoor receives patient data. Demo runs on synthetic data — no live PHI.</div>
+        </div>
+        <div id="ds-mode-toggle" style="display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:9px">
+          <button class="ds-mode-btn on" data-mode="synthetic" onclick="setDsMode('synthetic')">Synthetic (Demo)</button>
+          <button class="ds-mode-btn" data-mode="pilot" onclick="setDsMode('pilot')">Pilot Extract</button>
+          <button class="ds-mode-btn" data-mode="live" onclick="setDsMode('live')">Live FHIR</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connection status grid -->
+    <div class="msec" style="margin:4px 0 8px">National Exchange Connections</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px">
+      <div class="ds-conn" id="ds-raqeem">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-weight:700;font-size:13px;color:var(--nv)">Raqeem EHR</div>
+          <span class="ds-badge ds-ok">Connected · Read</span>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px">National EHR &amp; clinical registry. FHIR R4 read access.</div>
+        <div style="font-size:10px;color:var(--su);margin-top:8px">Last sync: 08:15 AM · 50 records</div>
+      </div>
+      <div class="ds-conn" id="ds-sehhaty">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-weight:700;font-size:13px;color:var(--nv)">Sehhaty App</div>
+          <span class="ds-badge ds-ok">Connected · Read</span>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px">Patient-reported vitals, appointments, medication reminders.</div>
+        <div style="font-size:10px;color:var(--su);margin-top:8px">Last sync: 08:15 AM · home BP &amp; glucose</div>
+      </div>
+      <div class="ds-conn" id="ds-nphies">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-weight:700;font-size:13px;color:var(--nv)">NPHIES</div>
+          <span class="ds-badge ds-pend">Pending Certification</span>
+        </div>
+        <div style="font-size:11px;color:var(--mu);margin-top:6px">National platform for standardised claims &amp; clinical exchange.</div>
+        <div style="font-size:10px;color:var(--su);margin-top:8px">Onboarding · sandbox access requested</div>
+      </div>
+    </div>
+
+    <!-- Per-centre pilot feeds -->
+    <div class="msec" style="margin:4px 0 8px">Pilot Centre Feeds <span style="font-size:10px;color:var(--mu);font-weight:400">— start with 2 centres, expand on success</span></div>
+    <div id="ds-centres" style="display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:18px"></div>
+
+    <!-- Phased rollout -->
+    <div class="msec" style="margin:4px 0 8px">Integration Roadmap</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:18px">
+      <div class="ds-phase ds-phase-active">
+        <div class="ds-phase-n">Phase 1</div>
+        <div class="ds-phase-t">Scheduled Extract</div>
+        <div class="ds-phase-d">Centres export de-identified CSV / FHIR bundle nightly. Light data-sharing agreement. No live system access.</div>
+        <div class="ds-phase-s">Weeks · 2 pilot centres</div>
+      </div>
+      <div class="ds-phase">
+        <div class="ds-phase-n">Phase 2</div>
+        <div class="ds-phase-t">Read-only FHIR API</div>
+        <div class="ds-phase-d">Direct read from centre systems or NPHIES sandbox. Live patient lists, labs, vitals.</div>
+        <div class="ds-phase-s">After pilot proves value</div>
+      </div>
+      <div class="ds-phase">
+        <div class="ds-phase-n">Phase 3</div>
+        <div class="ds-phase-t">National Exchange</div>
+        <div class="ds-phase-d">Full NPHIES integration, cluster-wide scale via Raqeem + Sehhaty under HSTP.</div>
+        <div class="ds-phase-s">Cluster rollout</div>
+      </div>
+      <div class="ds-phase">
+        <div class="ds-phase-n">Phase 4</div>
+        <div class="ds-phase-t">Bi-directional</div>
+        <div class="ds-phase-d">Write-back: care plans, referrals, coordinator notes flow to the EHR. Full PDPL certification.</div>
+        <div class="ds-phase-s">Production</div>
+      </div>
+    </div>
+
+    <!-- Live CSV import -->
+    <div class="msec" style="margin:4px 0 8px">Import Patient Extract <span style="font-size:10px;color:var(--mu);font-weight:400">— Phase 1 demonstration · drop a centre CSV to load patients</span></div>
+    <div class="card" style="margin-bottom:18px">
+      <div id="ds-drop" style="border:2px dashed var(--bdr);border-radius:10px;padding:26px;text-align:center;cursor:pointer;transition:border-color .15s" onclick="document.getElementById('ds-file').click()">
+        <div style="font-size:13px;font-weight:600;color:var(--nv)">Drop centre extract here, or click to choose a CSV</div>
+        <div style="font-size:11px;color:var(--mu);margin-top:5px">Expected columns: name, age, sex, centre, diagnosis, hba1c, sbp, dbp, ldl, egfr, adherence</div>
+        <input type="file" id="ds-file" accept=".csv" style="display:none" onchange="handleDsImport(this)">
+        <button style="margin-top:12px;font-size:11px;padding:6px 14px;background:var(--nv);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:inherit;font-weight:600" onclick="event.stopPropagation();loadSampleExtract()">Load Sample Extract (2 centres)</button>
+      </div>
+      <div id="ds-mapping" style="display:none;margin-top:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Field Mapping Preview</div>
+        <div id="ds-map-body" style="font-size:11px"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button id="ds-confirm-btn" style="font-size:12px;padding:8px 18px;background:var(--gr);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:inherit;font-weight:600" onclick="confirmDsImport()">Confirm &amp; Import to Jusoor</button>
+          <span id="ds-import-status" style="font-size:11px;color:var(--mu)"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compliance note -->
+    <div class="card" style="background:#f5f7fa;border:1px solid var(--bdr)">
+      <div style="font-size:12px;font-weight:700;color:var(--nv);margin-bottom:6px">Compliance &amp; Governance</div>
+      <div style="font-size:11px;color:var(--mu);line-height:1.6">
+        Demo data is fully synthetic — no real patient information. Pilot extracts are de-identified or pseudonymised under a data-sharing agreement before transfer. All processing is PDPL-aligned with data residency inside the Kingdom. Live FHIR and write-back phases require formal NPHIES certification and a signed data processing agreement with each cluster.
+      </div>
+    </div>
+
+  </div>
+</div>
+
 
 <!-- DRILL MODAL -->
 
@@ -4140,6 +4269,188 @@ function navToPtByEl(el){var id=el&&el.dataset&&el.dataset.ptId;if(!id){var p2=e
 
 
 
+
+
+// ════════════════════════════════════════════════════════════════
+//  DATA SOURCES / INTEGRATION SCREEN
+// ════════════════════════════════════════════════════════════════
+var _dsMode = 'synthetic';
+var _dsPilotCentres = ['PHC Al-Olaya','PHC Al-Malaz'];   // the 2 pilot centres
+var _dsPendingImport = null;
+
+function setDsMode(mode){
+  _dsMode = mode;
+  document.querySelectorAll('.ds-mode-btn').forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-mode')===mode);
+  });
+  // Update connection badges based on mode
+  var raq = document.querySelector('#ds-raqeem .ds-badge');
+  var seh = document.querySelector('#ds-sehhaty .ds-badge');
+  var nph = document.querySelector('#ds-nphies .ds-badge');
+  if (mode==='synthetic'){
+    if(raq){raq.className='ds-badge ds-off';raq.textContent='Synthetic';}
+    if(seh){seh.className='ds-badge ds-off';seh.textContent='Synthetic';}
+    if(nph){nph.className='ds-badge ds-off';nph.textContent='Not connected';}
+  } else if (mode==='pilot'){
+    if(raq){raq.className='ds-badge ds-ok';raq.textContent='Connected · Read';}
+    if(seh){seh.className='ds-badge ds-ok';seh.textContent='Connected · Read';}
+    if(nph){nph.className='ds-badge ds-pend';nph.textContent='Pending Certification';}
+  } else { // live
+    if(raq){raq.className='ds-badge ds-ok';raq.textContent='Live · FHIR R4';}
+    if(seh){seh.className='ds-badge ds-ok';seh.textContent='Live · FHIR R4';}
+    if(nph){nph.className='ds-badge ds-ok';nph.textContent='Live · Certified';}
+  }
+  renderDsCentres();
+}
+
+function renderDsCentres(){
+  var el = document.getElementById('ds-centres');
+  if(!el) return;
+  var allCentres = ['PHC Al-Olaya','PHC Al-Malaz','PHC Al-Yarmouk','PHC Al-Wazarat','PHC Al-Naseem'];
+  el.innerHTML = allCentres.map(function(c){
+    var nPts = PTS.filter(function(p){return p.centre===c;}).length;
+    var isPilot = _dsPilotCentres.indexOf(c)!==-1;
+    var short = c.replace('PHC ','');
+    var status, badge;
+    if (_dsMode==='synthetic'){ status='Synthetic'; badge='ds-off'; }
+    else if (isPilot){ status='Feed active'; badge='ds-ok'; }
+    else { status='Not yet onboarded'; badge='ds-off'; }
+    return '<div class="ds-ctr" style="'+(isPilot&&_dsMode!=='synthetic'?'border-top:3px solid var(--gr)':'')+'">'
+      +'<div style="font-size:12px;font-weight:700;color:var(--nv)">'+short+'</div>'
+      +'<div style="font-size:20px;font-weight:800;color:var(--nv);margin:4px 0">'+nPts+'</div>'
+      +'<div style="font-size:9px;color:var(--su)">patients</div>'
+      +'<div style="margin-top:7px"><span class="ds-badge '+badge+'">'+status+'</span></div>'
+      +'</div>';
+  }).join('');
+}
+
+// Build a sample CSV extract for 2 pilot centres (demo of Phase 1)
+function loadSampleExtract(){
+  var sample = [
+    ['name','age','sex','centre','diagnosis','hba1c','sbp','dbp','ldl','egfr','adherence'],
+    ['Abdullah Al-Otaibi','61','M','PHC Al-Olaya','T2DM;HTN','9.4','152','94','3.4','58','62'],
+    ['Noura Al-Shehri','54','F','PHC Al-Olaya','T2DM','8.1','128','78','2.6','78','80'],
+    ['Khalid Al-Mutairi','67','M','PHC Al-Olaya','HTN;CKD','7.0','158','96','2.2','38','55'],
+    ['Hessa Al-Dossari','49','F','PHC Al-Malaz','T2DM;Dyslipidaemia','7.6','132','82','3.8','82','71'],
+    ['Faisal Al-Harbi','72','M','PHC Al-Malaz','HF;HTN','6.8','146','88','2.0','49','48'],
+    ['Reem Al-Qahtani','58','F','PHC Al-Malaz','T2DM;HTN;CKD','10.1','164','98','3.1','41','58']
+  ];
+  var csv = sample.map(function(r){return r.join(',');}).join('\n');
+  parseDsCsv(csv);
+}
+
+function handleDsImport(input){
+  var file = input.files && input.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){ parseDsCsv(e.target.result); };
+  reader.readAsText(file);
+}
+
+function parseDsCsv(text){
+  var lines = text.trim().split(/\r?\n/);
+  var headers = lines[0].split(',').map(function(h){return h.trim();});
+  var rows = lines.slice(1).map(function(l){
+    var cells = l.split(',');
+    var obj = {};
+    headers.forEach(function(h,i){ obj[h] = (cells[i]||'').trim(); });
+    return obj;
+  });
+  _dsPendingImport = rows;
+
+  // Field mapping preview
+  var fieldMap = {
+    name:'name', age:'age', sex:'sex', centre:'centre', diagnosis:'dx[]',
+    hba1c:'hba1c', sbp:'sbp', dbp:'dbp', ldl:'ldl', egfr:'egfr', adherence:'adh'
+  };
+  var mapHtml = '<table style="width:100%;border-collapse:collapse">';
+  mapHtml += '<tr style="border-bottom:1px solid var(--bdr)"><th style="text-align:left;padding:5px;font-size:10px;color:var(--su);text-transform:uppercase">Source Column</th><th style="text-align:left;padding:5px;font-size:10px;color:var(--su);text-transform:uppercase">Jusoor Field</th><th style="text-align:left;padding:5px;font-size:10px;color:var(--su);text-transform:uppercase">Sample Value</th></tr>';
+  headers.forEach(function(h){
+    var jf = fieldMap[h] || '(unmapped)';
+    var sv = rows[0] ? (rows[0][h]||'—') : '—';
+    var matched = !!fieldMap[h];
+    mapHtml += '<tr style="border-bottom:1px solid var(--bdr)">'
+      +'<td style="padding:5px;font-family:monospace;color:var(--nv)">'+h+'</td>'
+      +'<td style="padding:5px;color:'+(matched?'var(--gr)':'var(--rd)')+';font-weight:600">'+jf+'</td>'
+      +'<td style="padding:5px;color:var(--mu)">'+sv+'</td></tr>';
+  });
+  mapHtml += '</table>';
+  document.getElementById('ds-map-body').innerHTML = mapHtml;
+  document.getElementById('ds-mapping').style.display = '';
+  document.getElementById('ds-import-status').textContent = rows.length + ' patient records ready to import from ' +
+    (new Set(rows.map(function(r){return r.centre;})).size) + ' centre(s)';
+}
+
+function confirmDsImport(){
+  if(!_dsPendingImport || !_dsPendingImport.length) return;
+  var added = 0;
+  _dsPendingImport.forEach(function(r){
+    var dx = (r.diagnosis||'').split(';').map(function(d){return d.trim();}).filter(Boolean);
+    var egfr = parseInt(r.egfr)||72;
+    var ckdSt = null;
+    if (dx.some(function(d){return d.toUpperCase().indexOf('CKD')!==-1;})){
+      if(egfr<30) ckdSt='4'; else if(egfr<45) ckdSt='3b'; else if(egfr<60) ckdSt='3a';
+    }
+    var hba1c = parseFloat(r.hba1c)||null;
+    var sbp = parseInt(r.sbp)||130, dbp = parseInt(r.dbp)||82;
+    var ldl = parseFloat(r.ldl)||2.8, adh = parseInt(r.adherence)||70;
+    var dxMapped = dx.map(function(d){
+      var u=d.toUpperCase();
+      if(u.indexOf('T2DM')!==-1||u.indexOf('DIABET')!==-1) return 'T2DM';
+      if(u.indexOf('HTN')!==-1||u.indexOf('HYPERT')!==-1) return 'Hypertension';
+      if(u.indexOf('HF')!==-1||u.indexOf('HEART')!==-1) return 'Heart Failure (HFrEF)';
+      if(u.indexOf('CKD')!==-1) return 'CKD Stage '+(ckdSt||'3a');
+      if(u.indexOf('LIPID')!==-1||u.indexOf('DYSLIP')!==-1) return 'Dyslipidaemia';
+      return d;
+    });
+    var al = [];
+    if(hba1c&&hba1c>9) al.push(['R','HbA1c '+hba1c+'% — urgent review (imported)']);
+    else if(hba1c&&hba1c>7) al.push(['Y','HbA1c '+hba1c+'% — above target (imported)']);
+    if(sbp>160) al.push(['R','BP '+sbp+'/'+dbp+' — urgent (imported)']);
+    else if(sbp>140) al.push(['Y','BP '+sbp+'/'+dbp+' — not at target (imported)']);
+    if(egfr<30) al.push(['R','eGFR '+egfr+' — Stage 4 CKD (imported)']);
+    if(!al.length) al.push(['G','Imported from centre extract — baseline review pending']);
+
+    var p = {
+      id:'SA-'+(2000+Math.floor(Math.random()*7999)),
+      name:r.name||'Imported Patient', age:parseInt(r.age)||55, sex:r.sex||'M',
+      risk:'Y', doctor:'Dr. Al-Qahtani', centre:r.centre||'PHC Al-Olaya',
+      dx:dxMapped, last:'Imported today',
+      hba1c:hba1c, hba1c_trend: hba1c?[hba1c,hba1c,hba1c,hba1c]:[null,null,null,null],
+      sbp:sbp, bp:sbp+'/'+dbp, bp_trend:[sbp,sbp,sbp,sbp],
+      ldl:ldl, hdl:1.1, tg:1.7, egfr:egfr, acr:10, pot:4.4, bicarb:24,
+      ef:null, bnp:null, nyha:null, ckd_stage:ckdSt, bmi:28,
+      adh:adh, ex:45, diet:55, ht_ctrl:sbp<=130, ht_target:'<130/80',
+      dm_type: dxMapped.indexOf('T2DM')!==-1?'T2DM':null,
+      c_peptide:null, autoab:'Negative',
+      sc:{'Retinal exam':['due','— from extract'],'ACR urine':['due','— order'],'eGFR / Creatinine':['done','— eGFR '+egfr]},
+      al:al, log:[['Import','Loaded from '+(r.centre||'centre')+' extract (Phase 1)']],
+      meds:[{n:'Reconcile from extract',ind:'General',del:false,ref:false,opt:true,note:''}],
+      ldlTarget:2.6, enrolled:'Imported',
+      edu_done:[], care_goal:'medication-optimisation', clinical_summary:'Imported via Phase 1 centre extract.', action_plan:[]
+    };
+    if(typeof calcRisk1Year==='function'){ var rs=calcRisk1Year(p); p.risk = rs>=70?'R':rs>=40?'Y':'G'; }
+    PTS.push(p);
+    added++;
+  });
+  _dsPendingImport = null;
+  document.getElementById('ds-mapping').style.display='none';
+  document.getElementById('ds-file').value='';
+  if(typeof refreshAll==='function') refreshAll();
+  if(typeof renderDiseaseSummaryRow==='function') renderDiseaseSummaryRow();
+  renderDsCentres();
+
+  // toast
+  var toast=document.createElement('div');
+  toast.style.cssText='position:fixed;top:20px;right:20px;z-index:9999;background:#1a2b4a;color:#fff;padding:14px 20px;border-radius:9px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2)';
+  toast.innerHTML='<div>Extract Imported Successfully</div><div style="font-size:11px;opacity:.8;margin-top:3px">'+added+' patients added · panel now '+PTS.length+' total</div>';
+  document.body.appendChild(toast);
+  setTimeout(function(){toast.style.opacity='0';toast.style.transition='opacity .5s';setTimeout(function(){toast.remove();},500);},4000);
+}
+
+window.setDsMode=setDsMode; window.renderDsCentres=renderDsCentres;
+window.loadSampleExtract=loadSampleExtract; window.handleDsImport=handleDsImport;
+window.confirmDsImport=confirmDsImport;
 
 console.log('[Jusoor v10] Reactive layer ready ✓');
 </script>
